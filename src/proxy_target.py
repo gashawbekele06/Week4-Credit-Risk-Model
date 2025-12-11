@@ -23,6 +23,7 @@ from src.data_loader import DataLoader
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
 class ProxyTargetEngineer:
     """
     Task 4: Create proxy target variable using RFM + KMeans clustering.
