@@ -186,19 +186,24 @@ class EDA:
         plt.show()
 
     def top_insights(self) -> None:
-        """Deliverable: Top 3–5 most important insights"""
-        print("\n" + "="*70)
-        print("TOP 5 MOST IMPORTANT INSIGHTS")
-        print("="*70)
-        insights = [
-            "1. FraudResult is extremely imbalanced (~0.13%) — cannot be used as a direct default proxy.",
-            "2. Nearly all transactions are in Uganda (CountryCode 256, Currency UGX) — model can be country-specific.",
-            "3. Transaction amounts are heavily right-skewed with a long tail — log transformation and robust scaling will be necessary.",
-            "4. Clear customer behavioral segments visible (high vs low frequency/spend) — ideal for RFM clustering to create a proxy target.",
-            "5. Value column is exactly |Amount| — redundant; use only positive Amount (debits) for monetary features to avoid double-counting."
-        ]
-        for insight in insights:
-            print(insight)
+            """Deliverable: Top 5 insights explicitly tied to Bati Bank model decisions"""
+            print("\n" + "="*70)
+            print("TOP 5 MOST IMPORTANT INSIGHTS FOR BATI BANK CREDIT RISK MODEL")
+            print("="*70)
+            insights = [
+                "1. FraudResult is extremely imbalanced (~0.13%) — cannot be used as primary target. "
+                "Must build behavioral proxy (RFM-based) to predict repayment likelihood.",
+                "2. 99.9% of transactions in Uganda (UGX) — model can be single-country specific, "
+                "no need for multi-currency or cross-border features.",
+                "3. Transaction amounts heavily right-skewed with extreme tails — "
+                "log transformation and robust scaling essential for stable model performance.",
+                "4. Clear behavioral segmentation in customer activity — "
+                "RFM clustering will effectively separate engaged vs disengaged customers for proxy default labeling.",
+                "5. Value = |Amount| with perfect correlation — redundant column. "
+                "Use only positive Amount (debits) for monetary features to reflect actual customer spending behavior."
+            ]
+            for insight in insights:
+                print(insight)
 
     def run_full_eda(self) -> None:
         """Run the complete EDA as per Task 2 instructions."""
