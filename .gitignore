@@ -1,1 +1,17 @@
-/data
+gitignore# Data
+data/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# MLflow
+mlruns/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Docker
+*.log
