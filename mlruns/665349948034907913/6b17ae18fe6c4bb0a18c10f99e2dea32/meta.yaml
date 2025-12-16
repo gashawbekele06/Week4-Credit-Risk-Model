@@ -1,0 +1,14 @@
+artifact_uri: file:C:/Users/Administrator/Desktop/10Academy/Week 4/Week4-Credit-Risk-Model/mlruns/665349948034907913/6b17ae18fe6c4bb0a18c10f99e2dea32/artifacts
+end_time: 1765854868083
+entry_point_name: ''
+experiment_id: '665349948034907913'
+lifecycle_stage: active
+run_id: 6b17ae18fe6c4bb0a18c10f99e2dea32
+run_name: XGBoost_Tuned
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765854852441
+status: 4
+tags: []
+user_id: Administrator
