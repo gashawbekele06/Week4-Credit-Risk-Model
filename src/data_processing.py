@@ -3,18 +3,29 @@ import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer  # <-- Added FunctionTransformer
 from sklearn.impute import SimpleImputer
 from xverse.transformer import WOE
 from typing import Optional
-from config import PROCESSED_PATH
-from data_loader import DataLoader
+import logging
+import sys
+import os
 
+# Path fix
+if __name__ == "__main__":
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(src_dir)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class FeatureEngineer:
     def __init__(self):
         self.pipeline = None
         self.woe = None
+        self.iv_table = None
 
     @staticmethod
     def filter_debits(df):
@@ -24,36 +35,47 @@ class FeatureEngineer:
     def extract_time_features(df):
         df = df.copy()
         df['TransactionStartTime'] = pd.to_datetime(df['TransactionStartTime'])
-        df['hour'] = df['TransactionStartTime'].dt.hour
-        df['day'] = df['TransactionStartTime'].dt.day
-        df['month'] = df['TransactionStartTime'].dt.month
-        df['year'] = df['TransactionStartTime'].dt.year
+        df['transaction_hour'] = df['TransactionStartTime'].dt.hour
+        df['transaction_day'] = df['TransactionStartTime'].dt.day
+        df['transaction_month'] = df['TransactionStartTime'].dt.month
+        df['transaction_year'] = df['TransactionStartTime'].dt.year
         return df
 
     @staticmethod
     def aggregate_per_customer(df):
-        agg = df.groupby('CustomerId').agg({
+        agg_dict = {
             'Amount': ['sum', 'mean', 'std', 'count'],
-            'hour': 'mean',
+            'transaction_hour': 'mean',
+            'transaction_day': 'mean',
+            'transaction_month': 'nunique',
             'ProductCategory': lambda x: x.mode()[0] if not x.mode().empty else 'unknown',
             'ChannelId': lambda x: x.mode()[0] if not x.mode().empty else 'unknown'
-        })
-        agg.columns = ['_'.join(col).strip() for col in agg.columns]
-        agg = agg.reset_index()
-        agg = agg.rename(columns={
+        }
+        aggregated = df.groupby('CustomerId').agg(agg_dict)
+        aggregated.columns = ['_'.join(col).strip() for col in aggregated.columns]
+        aggregated = aggregated.reset_index()  # Preserve CustomerId
+        
+        rename_map = {
             'Amount_sum': 'total_transaction_amount',
             'Amount_mean': 'average_transaction_amount',
             'Amount_std': 'standard_deviation_transaction_amounts',
             'Amount_count': 'transaction_count',
-            'hour_mean': 'average_transaction_hour',
+            'transaction_hour_mean': 'average_transaction_hour',
+            'transaction_day_mean': 'average_transaction_day',
+            'transaction_month_nunique': 'active_months',
             'ProductCategory_<lambda>': 'most_frequent_product',
             'ChannelId_<lambda>': 'most_frequent_channel'
-        })
-        agg['standard_deviation_transaction_amounts'] = agg['standard_deviation_transaction_amounts'].fillna(0)
-        return agg
+        }
+        aggregated = aggregated.rename(columns=rename_map)
+        aggregated['standard_deviation_transaction_amounts'] = aggregated['standard_deviation_transaction_amounts'].fillna(0)
+        return aggregated
 
-    def build_pipeline(self):
-        numeric_features = ['total_transaction_amount', 'average_transaction_amount', 'standard_deviation_transaction_amounts', 'transaction_count', 'average_transaction_hour']
+    def build_preprocessor(self):
+        numeric_features = [
+            'total_transaction_amount', 'average_transaction_amount',
+            'standard_deviation_transaction_amounts', 'transaction_count',
+            'average_transaction_hour', 'average_transaction_day', 'active_months'
+        ]
         categorical_features = ['most_frequent_product', 'most_frequent_channel']
 
         numeric_pipeline = Pipeline([
@@ -66,36 +88,59 @@ class FeatureEngineer:
             ('onehot', OneHotEncoder(handle_unknown='ignore'))
         ])
 
-        preprocessor = ColumnTransformer([
+        return ColumnTransformer([
             ('num', numeric_pipeline, numeric_features),
             ('cat', categorical_pipeline, categorical_features)
-        ])
+        ], remainder='drop')  # We handle CustomerId manually
 
-        self.pipeline = Pipeline([
-            ('filter', FunctionTransformer(self.filter_debits)),
-            ('time', FunctionTransformer(self.extract_time_features)),
-            ('aggregate', FunctionTransformer(self.aggregate_per_customer)),
-            ('preprocess', preprocessor)
+    def build_pipeline(self):
+        self.pipeline = Pipeline(steps=[
+            ('filter_debits', FunctionTransformer(self.filter_debits)),
+            ('time_features', FunctionTransformer(self.extract_time_features)),
+            ('aggregate', FunctionTransformer(self.aggregate_per_customer))
         ])
+        return self.pipeline
 
-    def fit_transform(self, df, y=None):
+    def fit_transform(self, df: pd.DataFrame, y: Optional[pd.Series] = None) -> pd.DataFrame:
         if self.pipeline is None:
             self.build_pipeline()
-        X = self.pipeline.fit_transform(df)
-        feature_names = self.pipeline.named_steps['preprocess'].get_feature_names_out()
-        X_df = pd.DataFrame(X, columns=feature_names)
-
+        
+        # Run aggregation
+        agg_df = self.pipeline.fit_transform(df)
+        
+        # Preprocess modeling features
+        preprocessor = self.build_preprocessor()
+        X_processed = preprocessor.fit_transform(agg_df)
+        feature_names = preprocessor.get_feature_names_out()
+        
+        # Final DataFrame with CustomerId first
+        X_df = pd.DataFrame(X_processed, columns=feature_names)
+        X_df.insert(0, 'CustomerId', agg_df['CustomerId'].values)
+        
         if y is not None:
-            woe_cols = ['most_frequent_product', 'most_frequent_channel']
-            agg_df = self.pipeline.named_steps['aggregate'].transform(
-                self.pipeline.named_steps['time'].transform(
-                    self.pipeline.named_steps['filter'].transform(df)
-                )
-            )
-            agg_df = pd.DataFrame(agg_df, columns=self.aggregate_per_customer(df.iloc[:1]).columns)
+            woe_features = ['most_frequent_product', 'most_frequent_channel']
             self.woe = WOE()
-            self.woe.fit(agg_df[woe_cols], y)
-            X_woe = self.woe.transform(agg_df[woe_cols])
+            self.woe.fit(agg_df[woe_features], y)
+            X_woe = self.woe.transform(agg_df[woe_features])
             X_df = pd.concat([X_df, X_woe.add_prefix('woe_')], axis=1)
+            
+            self.iv_table = self.woe.iv_df.sort_values('Information_Value', ascending=False)
+            print("\nInformation Value Table:")
+            print(self.iv_table)
 
+        return X_df
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        if self.pipeline is None:
+            raise ValueError("Pipeline not fitted")
+        
+        agg_df = self.pipeline.transform(df)
+        
+        preprocessor = self.build_preprocessor()
+        X_processed = preprocessor.transform(agg_df)
+        feature_names = preprocessor.get_feature_names_out()
+        
+        X_df = pd.DataFrame(X_processed, columns=feature_names)
+        X_df.insert(0, 'CustomerId', agg_df['CustomerId'].values)
+        
         return X_df
