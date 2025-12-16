@@ -1,8 +1,9 @@
 artifact_uri: file:C:/Users/Administrator/Desktop/10Academy/Week 4/Week4-Credit-Risk-Model/mlruns/884851039928470847/97359366cf6b49b2bdb75785e3b732cd/artifacts
+deleted_time: 1765853672991
 end_time: 1765850438011
 entry_point_name: ''
 experiment_id: '884851039928470847'
-lifecycle_stage: active
+lifecycle_stage: deleted
 run_id: 97359366cf6b49b2bdb75785e3b732cd
 run_name: LogisticRegression
 source_name: ''

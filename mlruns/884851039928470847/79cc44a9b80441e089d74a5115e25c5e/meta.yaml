@@ -1,8 +1,9 @@
 artifact_uri: file:C:/Users/Administrator/Desktop/10Academy/Week 4/Week4-Credit-Risk-Model/mlruns/884851039928470847/79cc44a9b80441e089d74a5115e25c5e/artifacts
+deleted_time: 1765853672724
 end_time: 1765850438668
 entry_point_name: ''
 experiment_id: '884851039928470847'
-lifecycle_stage: active
+lifecycle_stage: deleted
 run_id: 79cc44a9b80441e089d74a5115e25c5e
 run_name: XGBoost
 source_name: ''
