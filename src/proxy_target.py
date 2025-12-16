@@ -1,13 +1,8 @@
-# src/data_processing.py
+# src/proxy_target.py
 import pandas as pd
 import numpy as np
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
-from sklearn.impute import SimpleImputer
-from xverse.transformer import WOE
-from typing import Optional
-import logging
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 import sys
 import os
 
@@ -18,97 +13,36 @@ if __name__ == "__main__":
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from src.data_loader import DataLoader
+from src.config import SNAPSHOT_DATE, RANDOM_STATE
 
-class FeatureEngineer:
+class ProxyTargetEngineer:
     def __init__(self):
-        self.pipeline = None
-        self.woe = None
+        self.snapshot_date = pd.to_datetime(SNAPSHOT_DATE).tz_localize('UTC')
 
-    @staticmethod
-    def filter_debits(df):
-        return df[df['Amount'] > 0].copy()
+    def create_proxy_target(self, df):
+        debits = df[df['Amount'] > 0].copy()
+        debits['TransactionStartTime'] = pd.to_datetime(debits['TransactionStartTime'], utc=True)
 
-    @staticmethod
-    def extract_time_features(df):
-        df = df.copy()
-        df['TransactionStartTime'] = pd.to_datetime(df['TransactionStartTime'])
-        df['transaction_hour'] = df['TransactionStartTime'].dt.hour
-        df['transaction_day'] = df['TransactionStartTime'].dt.day
-        df['transaction_month'] = df['TransactionStartTime'].dt.month
-        df['transaction_year'] = df['TransactionStartTime'].dt.year
-        return df
+        rfm = debits.groupby('CustomerId').agg({
+            'TransactionStartTime': lambda x: (self.snapshot_date - x.max()).days,
+            'TransactionId': 'count',
+            'Amount': 'sum'
+        }).reset_index()
+        rfm.columns = ['CustomerId', 'recency', 'frequency', 'monetary']
 
-    @staticmethod
-    def aggregate_per_customer(df):
-        agg_dict = {
-            'Amount': ['sum', 'mean', 'std', 'count'],
-            'transaction_hour': 'mean',
-            'ProductCategory': lambda x: x.mode()[0] if not x.mode().empty else 'unknown',
-            'ChannelId': lambda x: x.mode()[0] if not x.mode().empty else 'unknown'
-        }
-        aggregated = df.groupby('CustomerId').agg(agg_dict)
-        aggregated.columns = ['_'.join(col).strip() for col in aggregated.columns]
-        aggregated = aggregated.reset_index()  # Preserve CustomerId
-        
-        rename_map = {
-            'Amount_sum': 'total_transaction_amount',
-            'Amount_mean': 'average_transaction_amount',
-            'Amount_std': 'standard_deviation_transaction_amounts',
-            'Amount_count': 'transaction_count',
-            'transaction_hour_mean': 'average_transaction_hour',
-            'ProductCategory_<lambda>': 'most_frequent_product',
-            'ChannelId_<lambda>': 'most_frequent_channel'
-        }
-        aggregated = aggregated.rename(columns=rename_map)
-        aggregated['standard_deviation_transaction_amounts'] = aggregated['standard_deviation_transaction_amounts'].fillna(0)
-        return aggregated
+        rfm['monetary_log'] = np.log1p(rfm['monetary'])
 
-    def build_preprocessor(self):
-        numeric_features = [
-            'total_transaction_amount', 'average_transaction_amount',
-            'standard_deviation_transaction_amounts', 'transaction_count',
-            'average_transaction_hour'
-        ]
-        categorical_features = ['most_frequent_product', 'most_frequent_channel']
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(rfm[['recency', 'frequency', 'monetary_log']])
 
-        numeric_pipeline = Pipeline([
-            ('imputer', SimpleImputer(strategy='median')),
-            ('scaler', StandardScaler())
-        ])
+        kmeans = KMeans(n_clusters=3, random_state=RANDOM_STATE, n_init=10)
+        rfm['cluster'] = kmeans.fit_predict(X_scaled)
 
-        categorical_pipeline = Pipeline([
-            ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
-        ])
+        centers = scaler.inverse_transform(kmeans.cluster_centers_)
+        risk_score = centers[:,0] - centers[:,1] - centers[:,2]
+        high_risk_cluster = np.argmax(risk_score)
 
-        return ColumnTransformer([
-            ('num', numeric_pipeline, numeric_features),
-            ('cat', categorical_pipeline, categorical_features)
-        ], remainder='passthrough')  # Keep CustomerId
+        rfm['is_high_risk'] = (rfm['cluster'] == high_risk_cluster).astype(int)
 
-    def build_pipeline(self):
-        self.pipeline = Pipeline([
-            ('filter', FunctionTransformer(self.filter_debits)),
-            ('time', FunctionTransformer(self.extract_time_features)),
-            ('aggregate', FunctionTransformer(self.aggregate_per_customer)),
-            ('preprocess', self.build_preprocessor())
-        ])
-
-    def fit_transform(self, df, y=None):
-        if self.pipeline is None:
-            self.build_pipeline()
-        X = self.pipeline.fit_transform(df)
-        feature_names = self.pipeline.named_steps['preprocess'].get_feature_names_out()
-        all_cols = ['CustomerId'] + list(feature_names)
-        X_df = pd.DataFrame(X, columns=all_cols)
-        return X_df
-
-    def transform(self, df):
-        if self.pipeline is None:
-            raise ValueError("Pipeline not fitted")
-        X = self.pipeline.transform(df)
-        feature_names = self.pipeline.named_steps['preprocess'].get_feature_names_out()
-        all_cols = ['CustomerId'] + list(feature_names)
-        return pd.DataFrame(X, columns=all_cols)
+        return rfm[['CustomerId', 'is_high_risk']]
