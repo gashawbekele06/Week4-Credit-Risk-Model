@@ -1,0 +1,14 @@
+artifact_uri: file:C:/Users/Administrator/Desktop/10Academy/Week 4/Week4-Credit-Risk-Model/mlruns/884851039928470847/6317bd4158724df5ad5ac6904a1bb1df/artifacts
+end_time: 1765850619470
+entry_point_name: ''
+experiment_id: '884851039928470847'
+lifecycle_stage: active
+run_id: 6317bd4158724df5ad5ac6904a1bb1df
+run_name: LogisticRegression
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765850609673
+status: 4
+tags: []
+user_id: Administrator

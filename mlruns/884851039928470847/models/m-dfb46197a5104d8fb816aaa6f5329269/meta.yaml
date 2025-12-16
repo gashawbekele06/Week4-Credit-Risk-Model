@@ -1,0 +1,10 @@
+artifact_location: file:C:/Users/Administrator/Desktop/10Academy/Week 4/Week4-Credit-Risk-Model/mlruns/884851039928470847/models/m-dfb46197a5104d8fb816aaa6f5329269/artifacts
+creation_timestamp: 1765850610112
+experiment_id: '884851039928470847'
+last_updated_timestamp: 1765850619440
+model_id: m-dfb46197a5104d8fb816aaa6f5329269
+model_type: null
+name: model
+source_run_id: 6317bd4158724df5ad5ac6904a1bb1df
+status: 2
+status_message: null

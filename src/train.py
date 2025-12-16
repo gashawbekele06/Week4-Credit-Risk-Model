@@ -1,134 +1,124 @@
 # src/train.py
 import mlflow
 import mlflow.sklearn
-import mlflow.xgboost
-from mlflow.models import infer_signature
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-)
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 import pandas as pd
-import numpy as np
 import logging
 import sys
 import os
 
 # -------------------------------------------------
-# PATH FIX
+# PATH FIX: Add project root to sys.path when running as script
 # -------------------------------------------------
 if __name__ == "__main__":
     src_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(src_dir)
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
+        print(f"[INFO] Added project root to sys.path: {project_root}")
 
+from src.data_loader import DataLoader
 from src.data_processing import FeatureEngineer
 from src.proxy_target import ProxyTargetEngineer
-from src.data_loader import DataLoader
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # MLflow setup
-mlflow.set_tracking_uri("file:../mlruns")
-mlflow.set_experiment("BatiBank_CreditRisk_Proxy")
+mlflow.set_tracking_uri("sqlite:///mlflow.db")  # Switch to SQLite backend to avoid deprecation warning
+mlflow.set_experiment("BatiBank_CreditRisk")
 
+class ModelTrainer:
+    def __init__(self, random_state=42):
+        self.random_state = random_state
+        self.best_auc = 0.0  # Initialize best_auc to avoid AttributeError
+        self.best_model_name = None
 
-def load_data():
-    loader = DataLoader()
-    df_raw = loader.load()
-    
-    # Feature engineering
-    engineer = FeatureEngineer()
-    X = engineer.fit_transform(df_raw)
-    
-    # Proxy target
-    proxy = ProxyTargetEngineer()
-    target_df = proxy.create_proxy_target(df_raw)
-    
-    # Merge target
-    final_df = X.merge(target_df[['CustomerId', 'is_high_risk']], on='CustomerId', how='left')
-    final_df['is_high_risk'] = final_df['is_high_risk'].fillna(0).astype(int)
-    
-    y = final_df['is_high_risk']
-    X = final_df.drop(columns=['CustomerId', 'is_high_risk'])
-    
-    logger.info(f"Data prepared: {X.shape[0]} samples, {X.shape[1]} features")
-    logger.info(f"Bad rate: {y.mean():.2%}")
-    
-    return X, y
+    def prepare_data(self):
+        logger.info("Loading and preparing data...")
+        loader = DataLoader()
+        df = loader.load()
+        
+        engineer = FeatureEngineer()
+        features_df = engineer.fit_transform(df)  # Has CustomerId
+        
+        proxy = ProxyTargetEngineer()
+        target_df = proxy.create_proxy_target(df)
+        
+        merged = features_df.merge(target_df[['CustomerId', 'is_high_risk']], on='CustomerId', how='left')
+        merged['is_high_risk'] = merged['is_high_risk'].fillna(0).astype(int)
+        
+        X = merged.drop(columns=['CustomerId', 'is_high_risk'])
+        y = merged['is_high_risk']
+        
+        return train_test_split(X, y, test_size=0.2, random_state=self.random_state, stratify=y)
 
+    def train_and_log(self, model, name, X_train, X_test, y_train, y_test):
+        with mlflow.start_run(run_name=name):
+            logger.info(f"Training {name}...")
+            model.fit(X_train, y_train)
+            
+            y_pred = model.predict(X_test)
+            y_prob = model.predict_proba(X_test)[:, 1]
+            
+            metrics = {
+                "accuracy": accuracy_score(y_test, y_pred),
+                "precision": precision_score(y_test, y_pred, zero_division=0),
+                "recall": recall_score(y_test, y_pred, zero_division=0),
+                "f1": f1_score(y_test, y_pred, zero_division=0),
+                "roc_auc": roc_auc_score(y_test, y_prob)
+            }
+            
+            mlflow.log_params({"model": name, "random_state": self.random_state})
+            mlflow.log_metrics(metrics)
+            
+            # Use sklearn flavor for both (fixes XGBoost logging issue)
+            mlflow.sklearn.log_model(model, "model")
+            
+            logger.info(f"{name} - AUC: {metrics['roc_auc']:.4f}")
+            
+            # Track best model
+            if metrics['roc_auc'] > self.best_auc:
+                self.best_auc = metrics['roc_auc']
+                self.best_model_name = name
+                logger.info(f"New best model: {name} (AUC: {self.best_auc:.4f})")
 
-def evaluate(y_true, y_pred, y_prob):
-    return {
-        "accuracy": accuracy_score(y_true, y_pred),
-        "precision": precision_score(y_true, y_pred),
-        "recall": recall_score(y_true, y_pred),
-        "f1": f1_score(y_true, y_pred),
-        "roc_auc": roc_auc_score(y_true, y_prob)
-    }
+    def run(self):
+        X_train, X_test, y_train, y_test = self.prepare_data()
+        
+        logger.info(f"Training set: {X_train.shape}, Test set: {X_test.shape}")
+        
+        # Logistic Regression
+        lr = LogisticRegression(max_iter=1000, random_state=self.random_state)
+        self.train_and_log(lr, "LogisticRegression", X_train, X_test, y_train, y_test)
+        
+        # XGBoost
+        xgb = XGBClassifier(
+            n_estimators=300,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=self.random_state,
+            eval_metric='logloss'
+        )
+        self.train_and_log(xgb, "XGBoost", X_train, X_test, y_train, y_test)
+        
+        # Register best model
+        if self.best_model_name:
+            # Get the best run
+            runs = mlflow.search_runs(order_by=["metrics.roc_auc DESC"], max_results=1)
+            best_run_id = runs.iloc[0]['run_id']
+            model_uri = f"runs:/{best_run_id}/model"
+            registered = mlflow.register_model(model_uri, "BatiBankCreditRiskModel")
+            logger.info(f"Best model ({self.best_model_name}) registered as BatiBankCreditRiskModel v{registered.version}")
 
+        print("\nTraining complete. View results at http://127.0.0.1:5000")
+        print("Run 'mlflow ui' to start the tracking server.")
 
 if __name__ == "__main__":
-    X, y = load_data()
-    
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    models = {}
-
-    # 1. Logistic Regression (baseline, interpretable)
-    with mlflow.start_run(run_name="LogisticRegression"):
-        lr = LogisticRegression(max_iter=1000, random_state=42)
-        lr.fit(X_train, y_train)
-        y_pred = lr.predict(X_test)
-        y_prob = lr.predict_proba(X_test)[:, 1]
-        metrics = evaluate(y_test, y_pred, y_prob)
-        
-        mlflow.log_params({"model": "LogisticRegression"})
-        mlflow.log_metrics(metrics)
-        mlflow.sklearn.log_model(lr, "model", signature=infer_signature(X_train, y_pred))
-        logger.info(f"Logistic Regression - AUC: {metrics['roc_auc']:.4f}")
-
-    # 2. XGBoost (high performance)
-    with mlflow.start_run(run_name="XGBoost_Tuned"):
-        param_dist = {
-            'n_estimators': [200, 400, 600],
-            'max_depth': [4, 6, 8],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'subsample': [0.8, 1.0],
-            'colsample_bytree': [0.7, 0.9, 1.0],
-            'reg_alpha': [0, 0.1],
-            'reg_lambda': [1, 1.5]
-        }
-        
-        xgb = XGBClassifier(random_state=42, eval_metric='logloss', n_jobs=-1)
-        search = RandomizedSearchCV(
-            xgb, param_distributions=param_dist,
-            n_iter=40, cv=5, scoring='roc_auc', random_state=42, n_jobs=-1
-        )
-        search.fit(X_train, y_train)
-        
-        best_xgb = search.best_estimator_
-        y_pred = best_xgb.predict(X_test)
-        y_prob = best_xgb.predict_proba(X_test)[:, 1]
-        metrics = evaluate(y_test, y_pred, y_prob)
-        
-        mlflow.log_params({"model": "XGBoost", **search.best_params_})
-        mlflow.log_metrics(metrics)
-        mlflow.xgboost.log_model(best_xgb, "model", signature=infer_signature(X_train, y_pred))
-        mlflow.log_metric("best_cv_auc", search.best_score_)
-        logger.info(f"XGBoost - AUC: {metrics['roc_auc']:.4f}")
-
-    # Register best model
-    best_model = "XGBoost" if metrics['roc_auc'] > 0.85 else "LogisticRegression"
-    logger.info(f"Best model: {best_model}")
-    
-    # Register in MLflow Model Registry
-    model_uri = f"runs:/{mlflow.active_run().info.run_id}/model"
-    mlflow.register_model(model_uri, "BatiBankCreditRiskModel")
-    
+    trainer = ModelTrainer()
+    trainer.run()
