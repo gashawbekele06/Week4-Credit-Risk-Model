@@ -53,3 +53,52 @@ We will develop \*\*both:
 
 - A **Logistic Regression + WoE** model → converted into a transparent 300–850 credit scorecard (production baseline, fully compliant)
 - A **Gradient Boosting** model → used as high-performance challenger and for ensemble blending (with SHAP explanations logged)
+
+### Folder structure
+
+credit-risk-model/
+├── data/
+│ ├── raw/data.csv
+│ └── processed/processed*with_target.csv
+├── notebooks/eda.ipynb
+├── src/
+│ ├── config.py
+│ ├── data_processing.py # Tasks 3 & 4
+│ ├── train.py # Task 5
+│ ├── predict.py # Standalone inference
+│ └── api/
+│ ├── main.py
+│ └── pydantic_models.py
+├── tests/test_data_processing.py
+├── models/
+│ ├── preprocessor.pkl
+│ └── best_model*\*.pkl
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── .github/workflows/ci.yml
+└── README.md
+
+## How to Run the Project
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Process data (Tasks 3 & 4)
+python -m src.data_processing
+
+# 3. Train & track models (Task 5)
+python -m src.train
+mlflow ui --workers 1    # View at http://localhost:5000
+
+# 4. Standalone inference
+python -m src.predict
+
+# 5. Run API (Task 6)
+docker-compose up --build
+# Open http://localhost:8000/docs
+
+# 6. Run tests
+pytest tests/
+```
