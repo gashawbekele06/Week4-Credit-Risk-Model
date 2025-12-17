@@ -2,14 +2,18 @@
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
-DATA_PATH = PROJECT_ROOT / "data" / "raw" / "data.csv"
-PROCESSED_PATH = PROJECT_ROOT / "data" / "processed"
 
-# Ensure directories exist
-(PROJECT_ROOT / "data" / "raw").mkdir(parents=True, exist_ok=True)
-(PROJECT_ROOT / "data" / "processed").mkdir(parents=True, exist_ok=True)
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
-PLOT_STYLE = "seaborn-v0_8"
-PALETTE = "husl"
+# Your actual file name
+RAW_DATA_PATH = RAW_DATA_DIR / "data.csv"
+
+PROCESSED_PATH = PROCESSED_DATA_DIR / "processed_with_target.csv"
+
+# Create directories if they don't exist
+RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 RANDOM_STATE = 42
-SNAPSHOT_DATE = "2019-03-01"
+N_CLUSTERS_RFM = 3
