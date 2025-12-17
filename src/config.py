@@ -1,14 +1,15 @@
-#Python# src/config.py
+# src/config.py
 from pathlib import Path
-import os
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-# Data path - adjust if your file is in data/raw or elsewhere
-DATA_PATH = PROJECT_ROOT / "data" / "data.csv"
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
-# Alternative if you have raw folder
-# DATA_PATH = PROJECT_ROOT / "data" / "raw" / "training.csv"
+# Your actual file name
+RAW_DATA_PATH = RAW_DATA_DIR / "data.csv"
+
+PROCESSED_PATH = PROCESSED_DATA_DIR / "processed_with_target.csv"
 
 # Create directories if they don't exist
 RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
