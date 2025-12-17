@@ -58,6 +58,7 @@ print("Loading saved preprocessor...")
 preprocessor = joblib.load("models/preprocessor.pkl")
 print("Preprocessor loaded successfully!")
 
+
 def predict_customer(raw_data: dict) -> dict:
     df = pd.DataFrame([raw_data])
     df = df[numerical_features + categorical_features]
