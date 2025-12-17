@@ -73,6 +73,7 @@ def predict_customer(raw_data: dict) -> dict:
         "risk_level": "high" if prob >= 0.5 else "low"
     }
 
+
 if __name__ == "__main__":
     sample = {
         'Value': 5000.0,
