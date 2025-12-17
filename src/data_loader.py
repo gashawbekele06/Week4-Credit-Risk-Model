@@ -3,6 +3,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from typing import Optional
+<<<<<<< HEAD
 import sys
 import os
 
@@ -16,15 +17,24 @@ if __name__ == "__main__":
 from src.config import DATA_PATH
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+=======
+from config import DATA_PATH
+
+logging.basicConfig(level=logging.INFO)
+>>>>>>> task-3
 logger = logging.getLogger(__name__)
 
 class DataLoader:
+<<<<<<< HEAD
     """Robust DataLoader with comprehensive error handling."""
     
+=======
+>>>>>>> task-3
     def __init__(self, data_path: Optional[Path] = None):
         self.data_path = data_path or DATA_PATH
         
         if not self.data_path.exists():
+<<<<<<< HEAD
             raise FileNotFoundError(
                 f"Data file not found: {self.data_path}\n"
                 "Please ensure 'data/data.csv' exists in your project directory."
@@ -68,4 +78,13 @@ class DataLoader:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
         logger.info("Data loading completed successfully")
+=======
+            raise FileNotFoundError(f"Data file not found at {self.data_path}")
+
+    def load(self) -> pd.DataFrame:
+        logger.info(f"Loading data from {self.data_path}")
+        df = pd.read_csv(self.data_path)
+        df['TransactionStartTime'] = pd.to_datetime(df['TransactionStartTime'], utc=True)
+        logger.info(f"Loaded {df.shape[0]:,} rows")
+>>>>>>> task-3
         return df

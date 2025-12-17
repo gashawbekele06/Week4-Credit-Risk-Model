@@ -1,0 +1,8 @@
+# docker-compose.yml
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
